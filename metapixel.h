@@ -81,6 +81,9 @@ typedef struct _metapixel_t
     float means[NUM_CHANNELS];
     unsigned char subpixels[NUM_SUBPIXELS * NUM_CHANNELS];
     int flag;
+    unsigned int required;
+    unsigned int usedAt;
+    float usedScore;
     unsigned char *data;	/* only used if from an antimosaic or if benchmarking rendering */
     int width, height;		/* only valid if data != 0 */
     int anti_x, anti_y;		/* only used if from an antimosaic */
@@ -92,6 +95,7 @@ typedef struct
 {
     metapixel_t *pixel;
     float score;
+    unsigned int fixed;
 } match_t;
 
 typedef struct

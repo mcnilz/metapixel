@@ -1,0 +1,8 @@
+/test/
+/convert
+/metapixel
+/metapixel-imagesize
+/nbproject/
+/*.o
+/rwimg/*.o
+/rwimg/*.a

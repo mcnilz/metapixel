@@ -985,9 +985,10 @@ init_mosaic_from_reader (classic_reader_t *reader)
     mosaic->metaheight = metaheight;
     mosaic->matches = (match_t*)malloc(sizeof(match_t) * metawidth * metaheight);
 
-    for (i = 0; i < metawidth * metaheight; ++i)
+    for (i = 0; i < metawidth * metaheight; ++i) {
 	mosaic->matches[i].pixel = 0;
-
+	mosaic->matches[i].fixed = 0;
+    }
     return mosaic;
 }
 
@@ -996,10 +997,12 @@ generate_local_classic (classic_reader_t *reader, int min_distance, int metric)
 {
     mosaic_t *mosaic = init_mosaic_from_reader(reader);
     int metawidth = reader->metawidth, metaheight = reader->metaheight;
-    int x, y;
+    int x, y, pos;
     metapixel_t **neighborhood = 0;
     int neighborhood_diameter = min_distance * 2 + 1;
     int neighborhood_size = (neighborhood_diameter * neighborhood_diameter - 1) / 2;
+    metapixel_t *pixel;
+    coeffs_t *coeffsAll = (coeffs_t*)malloc(sizeof(coeffs_t) * metawidth * metaheight);
 
     if (min_distance > 0)
 	neighborhood = (metapixel_t**)malloc(sizeof(metapixel_t*) * neighborhood_size);
@@ -1012,7 +1015,7 @@ generate_local_classic (classic_reader_t *reader, int min_distance, int metric)
 	{
 	    match_t match;
 	    int i;
-	    coeffs_t coeffs;
+	    coeffs_t *coeffs = &coeffsAll[y * metawidth + x];
 
 	    for (i = 0; i < neighborhood_size; ++i)
 	    {
@@ -1025,9 +1028,9 @@ generate_local_classic (classic_reader_t *reader, int min_distance, int metric)
 		    neighborhood[i] = mosaic->matches[ny * metawidth + nx].pixel;
 	    }
 
-	    generate_search_coeffs_for_classic_subimage(reader, x, &coeffs, metric);
+	    generate_search_coeffs_for_classic_subimage(reader, x, coeffs, metric);
 
-	    match = metapixel_nearest_to(&coeffs, metric, x, y, neighborhood, neighborhood_size, 0, 0);
+	    match = metapixel_nearest_to(coeffs, metric, x, y, neighborhood, neighborhood_size, 0, 0);
 
 	    if (match.pixel == 0)
 	    {
@@ -1045,6 +1048,59 @@ generate_local_classic (classic_reader_t *reader, int min_distance, int metric)
     free(neighborhood);
 
     printf("\n");
+
+    // 
+    for (pos = 0; pos < metawidth * metaheight; ++pos)
+    {
+	if (!mosaic->matches[pos].pixel->usedAt || mosaic->matches[pos].pixel->usedScore > mosaic->matches[pos].score)
+	{
+	    mosaic->matches[pos].pixel->usedAt = pos;
+	    mosaic->matches[pos].pixel->usedScore = mosaic->matches[pos].score;
+	}
+    }
+    for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
+    {
+	if (pixel->usedAt)
+	{
+	    mosaic->matches[pixel->usedAt].fixed = 1;
+	}
+    }
+
+    compare_func_t compare_func = compare_func_for_metric(metric);
+    float best_score = FLT_MAX;
+    float score;
+    float scoreNew;
+    int bestpos;
+
+    for (pixel = first_pixel; pixel != 0; pixel = pixel->next)
+    {
+	score = FLT_MAX;
+	bestpos = 0;
+	if (pixel->required && !pixel->usedAt)
+	{
+	    for (pos = 1; pos < metawidth * metaheight; ++pos)
+	    {
+		if (!mosaic->matches[pos].fixed)
+		{
+		    scoreNew = compare_func(&coeffsAll[pos], pixel, best_score);
+		    if (bestpos == 0 || scoreNew < score)
+		    {
+			bestpos = pos;
+			score = scoreNew;
+		    }
+		}
+	    }
+
+	    if (bestpos)
+	    {
+		mosaic->matches[bestpos].pixel = pixel;
+		mosaic->matches[bestpos].score = score;
+		mosaic->matches[bestpos].fixed = 1;
+//		printf("forced %s %d \n", pixel->filename, bestpos);
+	    }
+	}
+    }
+    free(coeffsAll);
 
     return mosaic;
 }
@@ -1433,6 +1489,10 @@ read_tables (const char *library_dir)
     allocator_t allocator;
     int dir_strlen = strlen(library_dir);
     char tables_name[dir_strlen + 1 + strlen(TABLES_FILENAME) + 1];
+    unsigned int required;
+    char *require_keyworld = "require";
+
+    required = strstr(library_dir, require_keyworld) ? 1 : 0;
 
     strcpy(tables_name, library_dir);
     strcat(tables_name, "/");
@@ -1472,6 +1532,9 @@ read_tables (const char *library_dir)
 		int channel, i;
 		char *filename = strip_path(lisp_string(vars[0]));
 
+		pixel->required = required;
+		pixel->usedAt = 0;
+		pixel->usedScore = 0.0;
 		pixel->filename = (char*)malloc(dir_strlen + 1 + strlen(filename) + 1);
 
 		strcpy(pixel->filename, library_dir);
