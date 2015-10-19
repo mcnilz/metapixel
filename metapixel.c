@@ -86,6 +86,7 @@ string_list_prepend_copy (string_list_t *lst, const char *str)
     string_list_t *new = (string_list_t*)malloc(sizeof(string_list_t));
 
     new->str = strdup(str);
+    new->required = 0;
     new->next = lst;
 
     return new;
@@ -1479,7 +1480,7 @@ generate_collage (char *input_name, char *output_name, float scale, int min_dist
 }
 
 static int
-read_tables (const char *library_dir)
+read_tables (const char *library_dir, int required)
 {
     lisp_object_t *pattern;
     lisp_object_t *obj;
@@ -1489,10 +1490,6 @@ read_tables (const char *library_dir)
     allocator_t allocator;
     int dir_strlen = strlen(library_dir);
     char tables_name[dir_strlen + 1 + strlen(TABLES_FILENAME) + 1];
-    unsigned int required;
-    char *require_keyworld = "require";
-
-    required = strstr(library_dir, require_keyworld) ? 1 : 0;
 
     strcpy(tables_name, library_dir);
     strcat(tables_name, "/");
@@ -1937,6 +1934,7 @@ usage (void)
 	   "      perform all the tasks in <batchfile>\n"
 	   "Options:\n"
 	   "  -l, --library=DIR            add the library in DIR\n"
+	   "  -r, --required-library=DIR   add the library in DIR, force all pictures to be used\n"
 	   "  -x, --antimosaic=PIC         use PIC as an antimosaic\n"
 	   "  -w, --width=WIDTH            set width for small images\n"
 	   "  -h, --height=HEIGHT          set height for small images\n"
@@ -2018,6 +2016,7 @@ main (int argc, char *argv[])
 		{ "benchmark-rendering", no_argument, 0, OPT_BENCHMARK_RENDERING },
 		{ "print-prepare-settings", no_argument, 0, OPT_PRINT_PREPARE_SETTINGS },
 		{ "library", required_argument, 0, 'l' },
+		{ "required-library", required_argument, 0, 'r' },
 		{ "width", required_argument, 0, 'w' },
 		{ "height", required_argument, 0, 'h' },
 		{ "y-weight", required_argument, 0, 'y' },
@@ -2036,7 +2035,7 @@ main (int argc, char *argv[])
 
 	int option, option_index;
 
-	option = getopt_long(argc, argv, "l:m:e:w:h:y:i:q:s:cd:a:x:f:", long_options, &option_index);
+	option = getopt_long(argc, argv, "l:r:m:e:w:h:y:i:q:s:cd:a:x:f:", long_options, &option_index);
 
 	if (option == -1)
 	    break;
@@ -2146,6 +2145,7 @@ main (int argc, char *argv[])
 		break;
 
 	    case 'l' :
+	    case 'r' :
 		if (antimosaic_filename != 0)
 		{
 		    fprintf(stderr, "Error: --library and --antimosaic cannot be used together.\n");
@@ -2153,6 +2153,10 @@ main (int argc, char *argv[])
 		}
 
 		library_directories = string_list_prepend_copy(library_directories, optarg);
+
+		if (option == 'r') {
+		    library_directories->required = 1;
+		}
 		break;
 
 	    case 'x' :
@@ -2399,7 +2403,7 @@ main (int argc, char *argv[])
 	    string_list_t *lst;
 
 	    for (lst = library_directories; lst != 0; lst = lst->next)
-		if (!read_tables(lst->str))
+		if (!read_tables(lst->str, lst->required))
 		{
 		    fprintf(stderr, "Error: cannot read library table `%s/%s'.\n", lst->str, TABLES_FILENAME);
 		    return 1;

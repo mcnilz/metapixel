@@ -144,6 +144,7 @@ typedef struct
 typedef struct _string_list_t
 {
     char *str;
+    int required;
     struct _string_list_t *next;
 } string_list_t;
 
